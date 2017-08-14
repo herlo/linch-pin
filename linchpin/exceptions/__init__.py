@@ -17,6 +17,12 @@ class StateError(LinchpinError):
         LinchpinError.__init__(self, *args, **kwargs)
 
 
+class SchemaError(LinchpinError):
+
+    def __init__(self, *args, **kwargs):
+        LinchpinError.__init__(self, *args, **kwargs)
+
+
 class ActionManagerError(LinchpinError):
 
     def __init__(self, *args, **kwargs):

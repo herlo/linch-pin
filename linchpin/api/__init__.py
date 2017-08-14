@@ -4,9 +4,12 @@ import os
 import re
 import sys
 import ast
+import json
 import yaml
-from collections import namedtuple, OrderedDict
+
+from cerberus import Validator
 from contextlib import contextmanager
+from collections import namedtuple, OrderedDict
 
 from ansible.inventory import Inventory
 from ansible.vars import VariableManager
@@ -18,7 +21,7 @@ from linchpin.api.callbacks import PlaybookCallback
 from linchpin.api.fetch import FETCH_CLASS
 from linchpin.hooks import LinchpinHooks
 from linchpin.hooks.state import State
-from linchpin.exceptions import LinchpinError
+from linchpin.exceptions import LinchpinError, SchemaError
 
 
 @contextmanager
@@ -57,6 +60,10 @@ class LinchpinAPI(object):
                            key='pkg',
                            default='linchpin')
         self.lp_path = '{0}/{1}'.format(base_path, pkg)
+        self.pb_path = '{0}/{1}'.format(self.lp_path,
+                                   self.ctx.get_evar('playbooks_folder',
+                                                     'provision'))
+
         self.set_evar('from_api', True)
 
         self.hook_state = None
@@ -232,114 +239,6 @@ class LinchpinAPI(object):
         self.set_evar('inventory_file', inv_file)
         self.set_evar('topology_name', topology_name)
 
-    def run_playbook(self, pinfile, targets='all', playbook='up'):
-        """
-        This function takes a list of targets, and executes the given
-        playbook (provison, destroy, etc.) for each provided target.
-
-        :param pinfile: Provided PinFile, with available targets,
-
-        :param targets: A tuple of targets to run. (default: 'all')
-        """
-
-        pf = yaml2json(pinfile)
-
-        # playbooks check whether from_api is defined
-        self.ctx.log_debug('from_api: {0}'.format(self.get_evar('from_api')))
-
-        # playbooks check whether from_cli is defined
-        # if not, vars get loaded from linchpin.conf
-        self.set_evar('from_api', True)
-        self.set_evar('lp_path', self.lp_path)
-
-        # do we display the ansible output to the console?
-        ansible_console = False
-        if self.ctx.cfgs.get('ansible'):
-            ansible_console = (
-                ast.literal_eval(self.ctx.cfgs['ansible'].get('console',
-                                                              'False')))
-
-        if not ansible_console:
-            ansible_console = self.ctx.verbose
-
-        self.set_evar('default_resources_path', '{0}/{1}'.format(
-                      self.ctx.workspace,
-                      self.get_evar('resources_folder',
-                                    default='resources')))
-
-        # playbooks still use this var, keep it here
-        self.set_evar('default_inventories_path',
-                      '{0}/{1}'.format(self.ctx.workspace,
-                                       self.get_evar('inventories_folder',
-                                                     default='inventories')))
-
-        # add this because of magic_var evaluation in ansible
-        self.set_evar('inventory_dir', self.get_evar(
-                      'default_inventories_path',
-                      default='inventories'))
-
-        self.set_evar('state', 'present')
-
-
-        if playbook == 'destroy':
-            self.set_evar('state', 'absent')
-
-        results = {}
-
-        # determine what targets is equal to
-        if (set(targets) ==
-                set(pf.keys()).intersection(targets) and len(targets) > 0):
-            pass
-        elif len(targets) == 0:
-            targets = set(pf.keys()).difference()
-        else:
-            raise LinchpinError("One or more invalid targets found")
-
-
-        for target in targets:
-            self.set_evar('topology', self.find_topology(
-                          pf[target]["topology"]))
-
-            if 'layout' in pf[target]:
-                self.set_evar('layout_file',
-                              '{0}/{1}/{2}'.format(self.ctx.workspace,
-                                                   self.get_evar(
-                                                       'layouts_folder'),
-                                                   pf[target]["layout"]))
-
-            # parse topology_file and set inventory_file
-            self.set_magic_vars()
-
-            # set the current target data
-            self.target_data = pf[target]
-            self.target_data["extra_vars"] = self.get_evar()
-
-            # note : changing the state triggers the hooks
-            self.pb_hooks = self.get_cfg('hookstates', playbook)
-            self.ctx.log_debug('calling: {0}{1}'.format('pre', playbook))
-
-            if 'pre' in self.pb_hooks:
-                self.hook_state = '{0}{1}'.format('pre', playbook)
-
-            # invoke the appropriate playbook
-            return_code, results[target] = (
-                self._invoke_playbook(playbook=playbook,
-                                      console=ansible_console)
-            )
-
-            if not return_code:
-                self.ctx.log_state("Action '{0}' on Target '{1}' is "
-                                   "complete".format(playbook, target))
-
-            # FIXME Check the result[target] value here, and fail if applicable.
-            # It's possible that a flag might allow more targets to run, then
-            # return an error code at the end.
-
-            if 'post' in self.pb_hooks:
-                self.hook_state = '{0}{1}'.format('post', playbook)
-
-        return (return_code, results)
-
 
     def lp_rise(self, pinfile, targets='all'):
         """
@@ -364,7 +263,7 @@ class LinchpinAPI(object):
             A tuple of targets to provision.
         """
 
-        return self.run_playbook(pinfile, targets, playbook="up")
+        return self._do_action(pinfile, targets, action="up")
 
 
     def lp_drop(self, pinfile, targets):
@@ -391,7 +290,7 @@ class LinchpinAPI(object):
             A tuple of targets to destroy.
         """
 
-        return self.run_playbook(pinfile, targets, playbook="destroy")
+        return self._do_action(pinfile, targets, action="destroy")
 
 
     def lp_down(self, pinfile, targets='all'):
@@ -485,93 +384,266 @@ class LinchpinAPI(object):
                             ' workspace'.format(topology))
 
 
+    def _get_topology_data(self, file_path):
+        ext = file_path.split(".")[-1]
+        if (ext == "yml" or ext == "yaml"):
+            fd = open(file_path)
+            return json.dumps(yaml.safe_load(fd))
+        if (ext == "json"):
+            return open(self.topo_file).read()
+        else:
+            return {"error": "Invalid File Format"}
 
-    def _invoke_playbook(self, playbook='up', console=True):
+
+    def validate_topology(self, topology):
+        """
+        Validate the provided topology against the schema
+
+        ;param topology: Full path to topology for validation
+        """
+
+        #self.pb_path = '{0}/{1}'.format(self.lp_path,
+        #                           self.ctx.get_evar('playbooks_folder',
+        #                                             'provision'))
+
+        #_schema self.pb_path
+
+
+        with open(topology) as fd:
+            data = yaml.safe_load(fd)
+
+        res_grps = data.get('resource_groups')
+        resources = []
+        print("res_grps: {0}\n".format(res_grps))
+
+        for group in res_grps:
+            res_grp_type = (group.get('resource_group_type') or
+                            group.get('res_group_type'))
+
+            schema_path = "{0}/roles/{1}/files/schema.json".format(self.pb_path,
+                                                                   res_grp_type)
+
+            schema = json.load(open(schema_path))
+            res_defs = group.get('resource_definitions')
+
+            # preload this so it will validate against the schema
+            document = {'res_defs': res_defs}
+            v = Validator(schema)
+
+            if not v.validate(document):
+                raise SchemaError('Schema validation failed:'
+                                  ' {0}'.format(v.errors))
+
+            print('group: {0}'.format(group))
+            resources.append(group.get('resource_group_name'))
+
+
+        return resources
+#        print("ending here for now")
+#        sys.exit(1)
+
+
+
+    def _do_action(self, pinfile, targets='all', action='up'):
+        """
+        Takes a list of targets, and executes the given
+        action (up, destroy, etc.) for each provided target.
+
+        :param pinfile: Provided PinFile, with available targets,
+
+        :param targets: A tuple of targets to run. (default: 'all')
+        """
+
+        pf = yaml2json(pinfile)
+
+        # playbooks check whether from_api is defined
+        self.ctx.log_debug('from_api: {0}'.format(self.get_evar('from_api')))
+
+        # playbooks check whether from_cli is defined
+        # if not, vars get loaded from linchpin.conf
+        self.set_evar('from_api', True)
+        self.set_evar('lp_path', self.lp_path)
+
+        # do we display the ansible output to the console?
+        ansible_console = False
+        if self.ctx.cfgs.get('ansible'):
+            ansible_console = (
+                ast.literal_eval(self.ctx.cfgs['ansible'].get('console',
+                                                              'False')))
+
+        if not ansible_console:
+            ansible_console = self.ctx.verbose
+
+        self.set_evar('default_resources_path', '{0}/{1}'.format(
+                      self.ctx.workspace,
+                      self.get_evar('resources_folder',
+                                    default='resources')))
+
+        # playbooks still use this var, keep it here
+        self.set_evar('default_inventories_path',
+                      '{0}/{1}'.format(self.ctx.workspace,
+                                       self.get_evar('inventories_folder',
+                                                     default='inventories')))
+
+        # add this because of magic_var evaluation in ansible
+        self.set_evar('inventory_dir', self.get_evar(
+                      'default_inventories_path',
+                      default='inventories'))
+
+        self.set_evar('state', 'present')
+
+        if action == 'destroy':
+            self.set_evar('state', 'absent')
+
+        results = {}
+
+        # determine what targets is equal to
+        if (set(targets) ==
+                set(pf.keys()).intersection(targets) and len(targets) > 0):
+            pass
+        elif len(targets) == 0:
+            targets = set(pf.keys()).difference()
+        else:
+            raise LinchpinError("One or more invalid targets found")
+
+
+        for target in targets:
+            # before setting the topology, validate it here
+            topology = self.find_topology(pf[target]["topology"])
+
+            playbooks = self.validate_topology(topology) #HERE
+            self.set_evar('topology', topology)
+
+            if 'layout' in pf[target]:
+                self.set_evar('layout_file',
+                              '{0}/{1}/{2}'.format(self.ctx.workspace,
+                                                   self.get_evar(
+                                                       'layouts_folder'),
+                                                   pf[target]["layout"]))
+
+            # parse topology_file and set inventory_file
+            self.set_magic_vars()
+
+            # set the current target data
+            self.target_data = pf[target]
+            self.target_data["extra_vars"] = self.get_evar()
+
+            # note : changing the state triggers the hooks
+            self.pb_hooks = self.get_cfg('hookstates', action)
+            self.ctx.log_debug('calling: {0}{1}'.format('pre', action))
+
+            if 'pre' in self.pb_hooks:
+                self.hook_state = '{0}{1}'.format('pre', action)
+
+            # invoke the appropriate action
+            return_code, results[target] = (
+                self._invoke_playbooks(playbooks, action=action,
+                                      console=ansible_console)
+            )
+
+            # if return_code is 0 (Success)
+            if not return_code:
+                self.ctx.log_state("Action '{0}' on Target '{1}' is "
+                                   "complete".format(action, target))
+
+            # FIXME Check the result[target] value here, and fail if applicable.
+            # It's possible that a flag might allow more targets to run, then
+            # return an error code at the end.
+
+            if 'post' in self.pb_hooks:
+                self.hook_state = '{0}{1}'.format('post', action)
+
+        return results
+
+
+    def _invoke_playbooks(self, playbooks, action='up', console=True):
         """
         Uses the Ansible API code to invoke the specified linchpin playbook
 
-        :param playbook: Which ansible playbook to run (default: 'up')
+        :param playbooks: Which ansible playbooks to run
+        (eg ['dummy', 'openstack')
+        :param action: Which action to take on playbooks given (default: 'up')
         :param console: Whether to display the ansible console (default: True)
         """
 
-        pb_path = '{0}/{1}'.format(self.lp_path,
-                                   self.ctx.get_evar('playbooks_folder',
-                                                     'provision'))
-        module_path = '{0}/{1}/'.format(pb_path, self.get_cfg('lp',
-                                                              'module_folder',
-                                                              'library'))
-        playbook_path = '{0}/{1}'.format(pb_path, self.get_cfg('playbooks',
-                                                               playbook,
-                                                               'site.yml'))
+        module_path = '{0}/{1}/'.format(self.pb_path,
+                                        self.get_cfg('lp',
+                                                     'module_folder',
+                                                     'library'))
 
-        loader = DataLoader()
-        variable_manager = VariableManager()
-        variable_manager.extra_vars = self.get_evar()
-        inventory = Inventory(loader=loader,
-                              variable_manager=variable_manager,
-                              host_list=[])
-        passwords = {}
-        # utils.VERBOSITY = 4
+        for playbook in playbooks:
+            playbook_path = '{0}/{1}.yml'.format(self.pb_path, playbook)
 
-        Options = namedtuple('Options', ['listtags',
-                                         'listtasks',
-                                         'listhosts',
-                                         'syntax',
-                                         'connection',
-                                         'module_path',
-                                         'forks',
-                                         'remote_user',
-                                         'private_key_file',
-                                         'ssh_common_args',
-                                         'ssh_extra_args',
-                                         'sftp_extra_args',
-                                         'scp_extra_args',
-                                         'become',
-                                         'become_method',
-                                         'become_user',
-                                         'verbosity',
-                                         'check'])
+            print('playbook_path: {0}'.format(playbook_path))
 
-        options = Options(listtags=False,
-                          listtasks=False,
-                          listhosts=False,
-                          syntax=False,
-                          connection='ssh',
-                          module_path=module_path,
-                          forks=100,
-                          remote_user='test',
-                          private_key_file=None,
-                          ssh_common_args=None,
-                          ssh_extra_args=None,
-                          sftp_extra_args=None,
-                          scp_extra_args=None,
-                          become=False,
-                          become_method='sudo',
-                          become_user='root',
-                          verbosity=0,
-                          check=False)
+            loader = DataLoader()
+            variable_manager = VariableManager()
+            variable_manager.extra_vars = self.get_evar()
+            inventory = Inventory(loader=loader,
+                                  variable_manager=variable_manager,
+                                  host_list=[])
+            passwords = {}
+            # utils.VERBOSITY = 4
 
-        pbex = PlaybookExecutor(playbooks=[playbook_path],
-                                inventory=inventory,
-                                variable_manager=variable_manager,
-                                loader=loader,
-                                options=options,
-                                passwords=passwords)
+            Options = namedtuple('Options', ['listtags',
+                                             'listtasks',
+                                             'listhosts',
+                                             'syntax',
+                                             'connection',
+                                             'module_path',
+                                             'forks',
+                                             'remote_user',
+                                             'private_key_file',
+                                             'ssh_common_args',
+                                             'ssh_extra_args',
+                                             'sftp_extra_args',
+                                             'scp_extra_args',
+                                             'become',
+                                             'become_method',
+                                             'become_user',
+                                             'verbosity',
+                                             'check'])
 
-        if not console:
-            results = {}
-            return_code = 0
+            options = Options(listtags=False,
+                              listtasks=False,
+                              listhosts=False,
+                              syntax=False,
+                              connection='ssh',
+                              module_path=module_path,
+                              forks=100,
+                              remote_user='test',
+                              private_key_file=None,
+                              ssh_common_args=None,
+                              ssh_extra_args=None,
+                              sftp_extra_args=None,
+                              scp_extra_args=None,
+                              become=False,
+                              become_method='sudo',
+                              become_user='root',
+                              verbosity=0,
+                              check=False)
 
-            cb = PlaybookCallback()
+            pbex = PlaybookExecutor(playbooks=[playbook_path],
+                                    inventory=inventory,
+                                    variable_manager=variable_manager,
+                                    loader=loader,
+                                    options=options,
+                                    passwords=passwords)
 
-            with suppress_stdout():
-                pbex._tqm._stdout_callback = cb
+            if not console:
+                results = {}
+                return_code = 0
 
-            return_code = pbex.run()
-            results = cb.results
+                cb = PlaybookCallback()
 
-            return return_code, results
-        else:
-            # the console only returns a return_code
-            return_code = pbex.run()
-            return return_code, None
+                with suppress_stdout():
+                    pbex._tqm._stdout_callback = cb
+
+                return_code = pbex.run()
+                results = cb.results
+
+                return return_code, results
+            else:
+                # the console only returns a return_code
+                return_code = pbex.run()
+                return return_code, None
