@@ -6,7 +6,7 @@
 #  when: state == "present"
 
 - include_vars: "{{ resources_file | default( default_resources_path+'/'+
-outputs.topology_name.replace(' ', '_').lower()+'.output' ) }}"
+topology_name.replace(' ', '_').lower()+'.output' ) }}"
 
 - name: "Updating topology_outputs"
   set_fact:
@@ -31,7 +31,7 @@ outputs.topology_name.replace(' ', '_').lower()+'.output' ) }}"
 - name: "Updating inventory_path with the absolute path"
   set_fact:
     inventory_path: "{{ inventory_path | default( default_inventories_path+'/'+
-    outputs.topology_name.replace(' ', '_').lower() ) }}.inventory"
+    topology_name.replace(' ', '_').lower() ) }}.inventory"
 
 #- name: inventory_layout
 #  debug:

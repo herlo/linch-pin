@@ -32,15 +32,11 @@
   when: not async
   ignore_errors: yes
 
-#- name: "DEBUG:: topology_outputs"
-#  debug:
-#    msg: "{{ topology_outputs }}"
-
 - name: "Generate outputs when async is false"
   template:
     src: "../templates/output_formatter.j2"
     dest: "{{ resources_file | default( default_resources_path+'/'+
-    outputs.topology_name.replace(' ', '_').lower()+'.output' ) }}"
+    topology_name.replace(' ', '_').lower()+'.output' ) }}"
   when: state == "present" and not async and output
 
 # pretty much the same when we use async== false , seperated the task for probable customizations in future
@@ -101,11 +97,11 @@
   template:
     src: "../templates/output_formatter.j2"
     dest: "{{ resources_file | default( default_resources_path+'/'+
-    outputs.topology_name.replace(' ', '_').lower()+'.output' ) }}"
+    topology_name.replace(' ', '_').lower()+'.output' ) }}"
   when: state == "present" and async and output
 
 - name: "set name of the resources_file for inventory generation"
   set_fact:
     resources_file:  "{{ resources_file | default( default_resources_path+'/'+
-    outputs.topology_name.replace(' ', '_').lower()+'.output' ) }}"
+    topology_name.replace(' ', '_').lower()+'.output' ) }}"
   when: state == "present"

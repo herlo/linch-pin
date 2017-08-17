@@ -220,14 +220,11 @@ class LinchpinAPI(object):
         """
 
         try:
-            t_f = open(self.get_evar("topology"), "r").read()
+            t_f = open(self.get_evar("topology_file"), "r").read()
             t_f = yaml.load(t_f)
             topology_name = t_f["topology_name"]
         except Exception as e:
-            self.ctx.log_info("{0}".format(str(e)))
-            topology_name = self.get_evar("topology").split("/")[-1]
-            # defaults to file name if there is any error
-            topology_name = topology_name.split(".")[-2]
+            raise LinchpinError("Error parsing topology: {0}".format(str(e)))
 
         inv_file = '{0}/{1}/{2}{3}'.format(self.workspace,
                                            self.get_evar('inventories_folder'),
@@ -247,7 +244,7 @@ class LinchpinAPI(object):
         An alias for lp_up. Used only for backward compatibility.
         """
 
-        self.lp_up(pinfile, targets)
+        return self.lp_up(pinfile, targets)
 
 
     def lp_up(self, pinfile, targets='all'):
@@ -410,11 +407,10 @@ class LinchpinAPI(object):
 
 
         with open(topology) as fd:
-            data = yaml.safe_load(fd)
+            topology_data = yaml.safe_load(fd)
 
-        res_grps = data.get('resource_groups')
+        res_grps = topology_data.get('resource_groups')
         resources = []
-        print("res_grps: {0}\n".format(res_grps))
 
         for group in res_grps:
             res_grp_type = (group.get('resource_group_type') or
@@ -434,14 +430,10 @@ class LinchpinAPI(object):
                 raise SchemaError('Schema validation failed:'
                                   ' {0}'.format(v.errors))
 
-            print('group: {0}'.format(group))
-            resources.append(group.get('resource_group_name'))
+            resources.append(group)
 
 
         return resources
-#        print("ending here for now")
-#        sys.exit(1)
-
 
 
     def _do_action(self, pinfile, targets='all', action='up'):
@@ -509,10 +501,12 @@ class LinchpinAPI(object):
 
         for target in targets:
             # before setting the topology, validate it here
-            topology = self.find_topology(pf[target]["topology"])
+            topology_file = self.find_topology(pf[target]["topology"])
 
-            playbooks = self.validate_topology(topology) #HERE
-            self.set_evar('topology', topology)
+            # FIXME we open the topology_file more than once now
+            # validate the topology and return a list of resources to act upon
+            resources = self.validate_topology(topology_file) #HERE
+            self.set_evar('topology_file', topology_file)
 
             if 'layout' in pf[target]:
                 self.set_evar('layout_file',
@@ -522,6 +516,7 @@ class LinchpinAPI(object):
                                                    pf[target]["layout"]))
 
             # parse topology_file and set inventory_file
+            # FIXME we open the topology_file more than once now
             self.set_magic_vars()
 
             # set the current target data
@@ -537,7 +532,7 @@ class LinchpinAPI(object):
 
             # invoke the appropriate action
             return_code, results[target] = (
-                self._invoke_playbooks(playbooks, action=action,
+                self._invoke_playbooks(resources, action=action,
                                       console=ansible_console)
             )
 
@@ -553,10 +548,10 @@ class LinchpinAPI(object):
             if 'post' in self.pb_hooks:
                 self.hook_state = '{0}{1}'.format('post', action)
 
-        return results
+        return (return_code, results)
 
 
-    def _invoke_playbooks(self, playbooks, action='up', console=True):
+    def _invoke_playbooks(self, resources, action='up', console=True):
         """
         Uses the Ansible API code to invoke the specified linchpin playbook
 
@@ -571,12 +566,13 @@ class LinchpinAPI(object):
                                                      'module_folder',
                                                      'library'))
 
-        for playbook in playbooks:
+        for resource in resources:
+            playbook = resource.get('resource_group_name')
             playbook_path = '{0}/{1}.yml'.format(self.pb_path, playbook)
 
-            print('playbook_path: {0}'.format(playbook_path))
-
             loader = DataLoader()
+
+            self.set_evar('resource', resource)
             variable_manager = VariableManager()
             variable_manager.extra_vars = self.get_evar()
             inventory = Inventory(loader=loader,
