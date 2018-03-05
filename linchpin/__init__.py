@@ -417,6 +417,8 @@ class LinchpinAPI(object):
                                   'dateformat',
                                   default='%m/%d/%Y %I:%M:%S %p')
 
+        rundb = self.setup_rundb()
+
         return_code = 99
         for target in provision_data.keys():
 
@@ -431,7 +433,6 @@ class LinchpinAPI(object):
                                     ' "outputs": [], "start": "",'
                                     ' "end": "", "rc": 0, "uhash": ""}')
 
-            rundb = self.setup_rundb()
 
             rundb_schema = json.loads(self.get_cfg(section='lp',
                                       key='rundb_schema',
@@ -462,32 +463,7 @@ class LinchpinAPI(object):
                     uhash = data.get('uhash')
                     self.ctx.log_debug("using data from"
                                        " run_id: {0}".format(run_id))
-#                else:
-#                    # add data to the current record so it doesn't cause
-#                    # inconsistent results
-#                    rundb.update_record(target,
-#                                        rundb_id,
-#                                        'action',
-#                                        action)
-#                    rundb.update_record(target,
-#                                        rundb_id,
-#                                        'rc',
-#                                        8)
-#                    if not uhash:
-#                        uh = hashlib.new(self.rundb_hash,
-#                                         ':'.join([target,
-#                                                   str(rundb_id),
-#                                                   start]))
-#                        uhash = uh.hexdigest()[-4:]
-#                        rundb.update_record(target,
-#                                            rundb_id,
-#                                            'uhash',
-#                                            uhash)
-#
-#
-#                    raise LinchpinError("Attempting to perform '{0}' action on"
-#                                        " target: '{1}' failed. No records"
-#                                        " available.".format(action, target))
+
             elif action not in ['up', 'destroy']:
                 # it doesn't appear this code will will execute,
                 # but if it does...
@@ -594,6 +570,31 @@ class LinchpinAPI(object):
                                             run_id=rundb_id)
 
             results[target]['rundb_data'] = {rundb_id: run_data[0]}
+
+        # setup global linchpin_id
+        # rundb is already setup, just need to change the schema
+        lp_schema_text = ('{"targets": []}')
+        lp_schema = json.loads(lp_schema_text)
+        rundb.schema = lp_schema
+        table = 'linchpin'
+        lp_id = rundb.init_table(table)
+
+        lp_data = {}
+
+        for target, values in results.iteritems():
+#            print("values: {}\n\n".format(values))
+
+            for k, v in values['rundb_data'].iteritems():
+                v.pop('inputs')
+
+                lp_data[target] = {k:
+                                      {
+                                        'uhash': v['uhash'],
+                                        'rc': v['rc']
+                                      }
+                                  }
+
+        rundb.update_record(table, lp_id, 'targets', [lp_data])
 
         return (return_code, results)
 
