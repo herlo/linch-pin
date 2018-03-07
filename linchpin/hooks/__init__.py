@@ -134,7 +134,7 @@ class LinchpinHooks(object):
                                                    uhash,
                                                    ext)
 
-        self.api.target_data['extra_vars'] = {}
+        self.api.target_data['extra_vars'] = self.api.get_evar()
         self.api.target_data['extra_vars']['inventory_dir'] = inv_folder
         self.api.target_data['extra_vars']['inventory_file'] = inv_file
 
@@ -241,6 +241,7 @@ class LinchpinHooks(object):
                 action_type = a_b['type']
                 ab_ctx = a_b['context'] if 'context' in a_b else False
                 if 'path' not in a_b:
+
                     # if the path is not defined it defaults to
                     # workspace/hooks/typeofhook/name
                     a_b['path'] = '{0}/{1}/{2}/{3}/'.format(
