@@ -3,6 +3,14 @@ aws
 
 The Amazon Web Services (AWS) provider manages multiple types of resources.
 
+The :code1.5:`AWS schema definition <linchpin/provision/roles/aws/files/schema.json>`
+determines what is available for each of the different AWS resources supported
+by LinchPin.
+
+Each section covers one of the :term:`resource_definition` sections, provides
+examples and details the items which can be included in each resource
+definition.
+
 aws_ec2
 -------
 
@@ -11,6 +19,40 @@ AWS Instances can be provisioned using this resource.
 * :docs1.5:`Topology Example <workspace/topologies/aws-ec2-new.yml>`
 * :docs1.5:`Topology Example w/ VPC <workspace/topologies/aws-ec2-vpc.yml>`
 * `aws_ec2 module <http://docs.ansible.com/ansible/latest/ec2_module.html>`_
+
+Topology Schema
+~~~~~~~~~~~~~~~
+
+Within Linchpin, the :term:`aws_ec2` :term:`resource_definition` has more options
+than what are shown in the examples above. For each :term:`aws_ec2` definition, the
+following options are available.
+
++------------------+------------+----------+------------------+----------------+
+| Parameter        | required   | type     | ansible value    | comments       |
++==================+============+==========+==================+================+
+| name             | true       | string   | instance_tags    | Creates a tag  |
+|                  |            |          |                  | for name=value |
+|                  |            |          |                  | and adds a tag |
+|                  |            |          |                  | to the aws     |
+|                  |            |          |                  | instance.      |
++------------------+------------+----------+------------------+----------------+
+| flavor           | true       | string   | instance_type    |                |
++------------------+------------+----------+------------------+----------------+
+| image            | true       | string   | image            |                |
++------------------+------------+----------+------------------+----------------+
+| region           | false      | string   | region           |                |
++------------------+------------+----------+------------------+----------------+
+| count            | false      | integer  | count            |                |
++------------------+------------+----------+------------------+----------------+
+| keypair          | false      | string   | key_name         |                |
++------------------+------------+----------+------------------+----------------+
+| security_group   | false      | string   | group            |                |
++------------------+------------+----------+------------------+----------------+
+| vpc_subnet_id    | false      | string   | vpc_subnet_id    |                |
++------------------+------------+----------+------------------+----------------+
+| assign_public_id | false      | string   | assign_public_id |                |
++------------------+------------+----------+------------------+----------------+
+
 
 EC2 Inventory Generation
 ~~~~~~~~~~~~~~~~~~~~~~~~
