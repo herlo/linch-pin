@@ -36,6 +36,6 @@ RUN pip install -U pip; \
     sed -i "/Service/a ExecStartPost=\/bin\/chmod 666 /dev/kvm" \
       /usr/lib/systemd/system/libvirtd.service
 
-# /wordir should include the source code of linchpin
+# /workdir should include the source code of linchpin
 VOLUME [ "/workdir" , "/sys/fs/cgroup"]
 CMD ["/root/init_libvirt.sh"]
