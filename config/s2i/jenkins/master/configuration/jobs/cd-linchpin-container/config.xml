@@ -73,7 +73,7 @@
         <hudson.model.StringParameterDefinition>
           <name>DOCKER_REGISTRY</name>
           <description>Docker Registry</description>
-          <defaultValue>https://registry.hub.docker.com</defaultValue>
+          <defaultValue>docker://docker.io</defaultValue>
         </hudson.model.StringParameterDefinition>
       </parameterDefinitions>
     </hudson.model.ParametersDefinitionProperty>
@@ -83,12 +83,12 @@
       <configVersion>2</configVersion>
       <userRemoteConfigs>
         <hudson.plugins.git.UserRemoteConfig>
-          <url>https://github.com/CentOS-PaaS-SIG/linchpin</url>
+          <url>https://github.com/herlo/linchpin</url>
         </hudson.plugins.git.UserRemoteConfig>
       </userRemoteConfigs>
       <branches>
         <hudson.plugins.git.BranchSpec>
-          <name>${ghprbActualCommit}</name>
+          <name>separate_pods</name>
         </hudson.plugins.git.BranchSpec>
       </branches>
       <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
