@@ -5,14 +5,18 @@ LABEL description "This container will verify linchpin works under Fedora27"
 ENV HOME=/root
 WORKDIR $HOME
 
-RUN dnf -y install python-pip ansible curl gcc python-devel python2-shade \
+RUN dnf -y install python-pip ansible curl gcc python-devel python2-shade git \
                    openssl-devel libvirt-daemon-driver-* libvirt-daemon \
                    libvirt-daemon-kvm qemu-kvm libvirt-daemon-config-network \
                    libvirt-python libvirt-devel redhat-rpm-config file \
                    openssh mkisofs libvirt-client virt-install net-tools \
-                   python-krbV make libxslt-python krb5-workstation \
-    && yum clean all; \
-    (cd /lib/systemd/system/sysinit.target.wants/; for i in *; \
+                   python-krbV make libxslt-python krb5-workstation;
+
+RUN curl -o /etc/yum.repos.d/beaker-client.repo \
+            https://beaker-project.org/yum/beaker-client-Fedora.repo \
+    && dnf install -y beaker-client && dnf clean all && rm -rf /var/cache/yum
+
+RUN (cd /lib/systemd/system/sysinit.target.wants/; for i in *; \
      do [ $i == systemd-tmpfiles-setup.service ] || rm -f $i; done); \
     rm -f /lib/systemd/system/multi-user.target.wants/*;\
     rm -f /etc/systemd/system/*.wants/*;\
@@ -22,12 +26,7 @@ RUN dnf -y install python-pip ansible curl gcc python-devel python2-shade \
     rm -f /lib/systemd/system/basic.target.wants/*;\
     rm -f /lib/systemd/system/anaconda.target.wants/*; \
     systemctl enable libvirtd; \
-    systemctl enable virtlockd
-
-RUN curl -o /etc/yum.repos.d/beaker-client.repo \
-            https://beaker-project.org/yum/beaker-client-Fedora.repo; \
-    yum install beaker-client; \
-    yum clean all
+    systemctl enable virtlockd;
 
 COPY init_libvirt.sh $HOME/
 
