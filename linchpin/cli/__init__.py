@@ -320,12 +320,30 @@ class LinchpinCli(LinchpinAPI):
             f.write(json.dumps(dist_data))
 
     def _write_latest_run(self):
+        """
+        This method takes all of the provided run_data, loops through the
+        data and generates specific data about the latest run into a file
+        placed in the resources_path
+        """
+
+        resources_folder = self.get_evar('resources_folder',
+                                         default='resources')
+        context_path = '{0}/{1}'.format(self.workspace, resources_folder)
+
         latest_run_data = self._get_run_data_by_txid()
-        resources_path = self.get_evar('resources_folder')
-        context_path = '{0}/{1}'.format(self.workspace, resources_path)
+
+        resources_path = os.path.expanduser(
+            self.get_evar('default_resources_path'))
+
+        context_file = '{0}/{1}'.format(context_path, 'linchpin.latest')
+
+        if (os.path.isabs(resources_path)):
+                context_path = resources_path
         if not os.path.exists(context_path):
             os.makedirs(context_path)
+
         context_file = '{0}/{1}'.format(context_path, 'linchpin.latest')
+
         with open(context_file, 'w+') as f:
             f.write(json.dumps(latest_run_data))
 
