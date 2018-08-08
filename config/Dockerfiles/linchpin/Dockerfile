@@ -1,7 +1,6 @@
 FROM fedora:28
-LABEL name="contrainfra/linchpin-container" \
+LABEL name="contrainfra/linchpin" \
       maintainer="https://github.com/CentOS-PaaS-SIG/linchpin" \
-      version="0.0.6" \
       description="LinchPin executable container running the latest Fedora release"
 
 ENV UID=10001
