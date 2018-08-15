@@ -1,5 +1,5 @@
 /**
- * CI Stage Linchpin Trigger
+ * CI Stage Linchpin Container
  *
  * This is a declarative pipeline for the CI linchpin pipeline
  * that includes the building of images based on PRs
@@ -19,7 +19,7 @@ STABLE_LABEL = "stable"
 tagMap = [:]
 
 // Initialize
-tagMap['fedora26'] = STABLE_LABEL
+tagMap['fedora28'] = STABLE_LABEL
 tagMap['fedora27'] = STABLE_LABEL
 tagMap['centos7'] = STABLE_LABEL
 
@@ -118,7 +118,7 @@ pipeline {
         kubernetes {
             cloud 'openshift'
             serviceAccount 'jenkins'
-            label 'stage-trigger-' + env.ghprbActualCommit
+            label 'stage-container-' + env.ghprbActualCommit
             containerTemplate {
                 name 'jnlp'
                 args '${computer.jnlpmac} ${computer.name}'
@@ -162,17 +162,6 @@ pipeline {
                 }
             }
         }
-        stage("fedora26 image build") {
-            when {
-                // Only build if we have related files in changeset
-                changeset "config/Dockerfiles/fedora26/**"
-            }
-            steps {
-                script {
-                    tagMap['fedora26'] = pipelineUtils.buildImage(openshiftProject, "fedora26")
-                }
-            }
-        }
         stage("fedora27 image build") {
             when {
                 // Only build if we have related files in changeset
@@ -181,6 +170,17 @@ pipeline {
             steps {
                 script {
                     tagMap['fedora27'] = pipelineUtils.buildImage(openshiftProject, "fedora27")
+                }
+            }
+        }
+        stage("fedora28 image build") {
+            when {
+                // Only build if we have related files in changeset
+                changeset "config/Dockerfiles/fedora28/**"
+            }
+            steps {
+                script {
+                    tagMap['fedora28'] = pipelineUtils.buildImage(openshiftProject, "fedora28")
                 }
             }
         }
@@ -207,29 +207,25 @@ pipeline {
         stage("Run Stage Job") {
             steps {
                 build job: 'ci-linchpin',
-                        parameters: [
-                                string(name: 'ghprbActualCommit',
-                                       value: "${env.ghprbActualCommit}"),
-                                string(name: 'ghprbGhRepository',
-                                       value: "${env.ghprbGhRepository}"),
-                                string(name: 'ghprbPullAuthorLogin',
-                                       value: "${env.ghprbPullAuthorLogin}"),
-                                string(name: 'sha1',
-                                       value: "${env.sha1}"),
-                                string(name: 'ghprbPullId',
-                                       value: "${env.ghprbPullId}"),
-                                string(name: 'ghprbGhRepository',
-                                       value: "${env.ghprbGhRepository}"),
-                                string(name: 'FEDORA26_TAG',
-                                       value: tagMap['fedora26']),
-                                string(name: 'FEDORA27_TAG',
-                                       value: tagMap['fedora27']),
-                                string(name: 'CENTOS7_TAG',
-                                       value: tagMap['centos7']),
-                                string(name: 'TEST_PROVIDERS',
-                                       value: test_providers)
-                        ],
-                        wait: true
+                    parameters: [
+                        string(name: 'ghprbActualCommit',
+                            value: "${env.ghprbActualCommit}"),
+                        string(name: 'ghprbGhRepository',
+                            value: "${env.ghprbGhRepository}"),
+                        string(name: 'ghprbPullAuthorLogin',
+                            value: "${env.ghprbPullAuthorLogin}"),
+                        string(name: 'sha1',
+                            value: "${env.sha1}"),
+                        string(name: 'ghprbPullId',
+                            value: "${env.ghprbPullId}"),
+                        string(name: 'ghprbGhRepository',
+                            value: "${env.ghprbGhRepository}"),
+                        string(name: 'CENTOS7_TAG',
+                            value: tagMap['centos7']),
+                        string(name: 'TEST_PROVIDERS',
+                            value: test_providers)
+                    ],
+                    wait: true
             }
         }
     }
