@@ -71,8 +71,8 @@ IRC_CHANNEL = "#contra-ci-cd"
 
 def libraries = ['cico-pipeline': ['master',
                                    'https://github.com/CentOS/cico-pipeline-library.git'],
-                 'ci-pipeline'  : ['master',
-                                   'https://github.com/CentOS-PaaS-SIG/ci-pipeline.git']]
+                 'ci-pipeline'  : ['separate_pods',
+                                   'https://github.com/herlo/ci-pipeline.git']]
 
 libraries.each { name, repo ->
     library identifier: "${name}@${repo[0]}",
@@ -118,7 +118,7 @@ pipeline {
         kubernetes {
             cloud 'openshift'
             serviceAccount 'jenkins'
-            label 'stage-container-' + env.ghprbActualCommit
+            label 'lp-stage-container-' + env.ghprbActualCommit
             containerTemplate {
                 name 'jnlp'
                 args '${computer.jnlpmac} ${computer.name}'
@@ -152,16 +152,15 @@ pipeline {
                 }
             }
         }
-        stage("Setup Container Templates") {
-            steps {
-                script {
-                    sh "oc whoami"
-                    sh "pwd"
-                    sh "cd 
-                    pipelineUtils.setupContainerTemplates(openshiftProject)
-                }
-            }
-        }
+//        stage("Setup Container Templates") {
+//            steps {
+//                script {
+//                    sh "oc whoami"
+//                    sh "pwd"
+//                    pipelineUtils.setupContainerTemplates(openshiftProject)
+//                }
+//            }
+//        }
         stage("fedora27 image build") {
             when {
                 // Only build if we have related files in changeset

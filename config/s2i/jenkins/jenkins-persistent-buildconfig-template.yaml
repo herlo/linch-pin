@@ -228,10 +228,10 @@ parameters:
 - description: Git source URI for Jenkins S2I
   name: REPO_URL
   required: true
-  value: https://github.com/CentOS-PaaS-SIG/linchpin.git
+  value: https://github.com/herlo/linchpin.git
 - description: Git branch/tag reference
   name: REPO_REF
-  value: develop
+  value: separate_pods
 - description: Path within Git project to build; empty for root project directory.
   name: CONTEXT_DIR
   value: config/s2i/jenkins/master
