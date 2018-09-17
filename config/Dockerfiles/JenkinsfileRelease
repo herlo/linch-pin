@@ -199,8 +199,7 @@ EOF
                             sh "git push --tags origin " + env.ghprbActualCommit + ":" + MASTER_BRANCH
                         }
                     }
-                }
-                catch (e) {
+                } catch (e) {
 
                         // Set build result
                         currentBuild.result = 'FAILURE'
@@ -210,8 +209,6 @@ EOF
 
                         // Throw the error
                         throw e
-
-                }
                 } finally {
                     // Archive our artifacts
                     step([$class: 'ArtifactArchiver',
