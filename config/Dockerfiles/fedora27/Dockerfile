@@ -40,4 +40,4 @@ RUN echo "namespaces = []" >> /etc/libvirt/qemu.conf
 
 # /workir should include the source code of linchpin
 VOLUME [ "/workdir" , "/sys/fs/cgroup"]
-CMD ["/root/init_libvirt.sh"]
+CMD ["/usr/sbin/init"]
