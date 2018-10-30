@@ -3,7 +3,7 @@ PinFile
 
 A :term:`PinFile` takes a :term:`topology` and an optional :term:`layout`, among other options, as a combined set of configurations as a resource for provisioning. An example :term:`Pinfile` is shown.
 
-The *simple* PinFile is shown below
+The *simple* PinFile is shown below::
 
 .. code-block:: yaml
 
